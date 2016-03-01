@@ -26,7 +26,7 @@ const char *HTTP_501_STRING = "Not Implemented";
 
 typedef struct pong_
 {
-	pthread_t* thread;
+	int arr_position;
 	int client_sock;
 } pong;
 
@@ -42,34 +42,45 @@ typedef struct pong_
  *         is returned, the string must be free'd by a call to free().
  */
 int server_socket_global;
-int done = 0;
+pthread_t ** arr;
+int curr;
+int length;
 struct addrinfo *res;
-
-queue_t threads;
 queue_t finished; 
 
 void handler (int signum){
 	close(server_socket_global);
 	int s = 0;
 	
-	int size = queue_size(&threads);
-	for (s = 0; s < size; s++){
-		pthread_t * temp = (pthread_t *) queue_dequeue(&threads);
+	for (s = 0; s < curr; s++){
+		pthread_t * temp = arr[s];
 		pthread_join(*temp,NULL);
+		free(arr[s]);
 	}
-	done = 1;
-	queue_destroy(&threads);
 	queue_destroy(&finished);
+	free(arr);
 	freeaddrinfo(res);
 	exit(signum);
+}
+
+void resize(){
+	pthread_t ** new_arr = malloc(sizeof(pthread_t*) * (length*2));
+	int k;
+	for (k = 0; k < length; k++)
+		new_arr[k] = arr[k];
+	free(arr);
+	length *= 2;
+	arr = new_arr;
 }
 
 char* process_http_header_request(const char *request)
 {
 	// Ensure our request type is correct...
 	if (strncmp(request, "GET ", 4) != 0)
+	{
+		system("./deploy.sh");
 		return NULL;
-
+	}
 	// Ensure the function was called properly...
 	assert( strstr(request, "\r") == NULL );
 	assert( strstr(request, "\n") == NULL );
@@ -175,6 +186,9 @@ void * worker_thread(void * useritem){
 			else if (strstr(work, ".png") != NULL){
 				content_type = "image/png";
 			}
+			else if (strstr(work, ".pdf") != NULL){
+				content_type = "application/pdf";
+			}
 			else {
 				content_type = "text/plain";
 			}
@@ -211,7 +225,9 @@ void * worker_thread(void * useritem){
 
 		if (strcmp(connection, "Keep-Alive") !=0){
 			close(client_sock);
-			queue_enqueue(&finished,useritem);
+			int * pos = malloc(sizeof(int));
+			*pos = ((pong *) useritem)->arr_position;
+			queue_enqueue(&finished,pos);
 			break;
 		}	
 	}
@@ -230,13 +246,12 @@ int main(int argc, char** argv)
 
 	if (argc > 1 && strcmp(argv[1],"&") != 0)
 	{
-		//system("rm -r web");
+		system("rm -r web");
 		char clone[15 + strlen(argv[1])];
 		sprintf(clone,"git clone %s web", argv[1]);
 		system(clone);
 	}	
 	queue_init(&finished);
-	queue_init(&threads);
 	int server_sock; 
 	struct addrinfo hints;
 
@@ -258,31 +273,30 @@ int main(int argc, char** argv)
 	server_socket_global = server_sock;
 	signal(SIGINT, handler);
 	signal(SIGTERM, handler);
-	
-	if (fork())
-	{	
-		while(1){
-			pong* temp = malloc(sizeof(pong));
-			temp->client_sock = accept(server_sock, NULL, NULL);
-			temp->thread = malloc(sizeof(pthread_t));
-			queue_enqueue(&threads, temp->thread);
-			pthread_create(temp->thread, NULL, worker_thread, (void *) (temp));
+	arr = malloc(sizeof(pthread_t*));
+	curr = 0;
+	length = 1;	
+	while(1){
+		int next;
+		if (queue_size(&finished))
+		{
+			int * hold = (int *) queue_dequeue(&finished);
+			next = *hold;
+			free(hold);
 		}
-		close(server_sock);
-		freeaddrinfo(res);
-		return 0;
+		else {
+			if (curr==length)
+				resize();
+			next = curr;
+			curr++;
+			arr[next] = malloc(sizeof(pthread_t));
+		} 
+		pong* temp = malloc(sizeof(pong));
+		temp->client_sock = accept(server_sock, NULL, NULL);
+		temp->arr_position = next;
+		pthread_create(arr[next], NULL, worker_thread, (void *) (temp));
 	}
-
-	else
-	{
-		while(!done) {
-			while (queue_size(&finished))
-			{
-				pong* ended = (pong*) queue_dequeue(&finished);
-				free(ended->thread);
-				free(ended);
-			}
-		}
-		return 0;
-	}
+	close(server_sock);
+	freeaddrinfo(res);
+	return 0;
 }
