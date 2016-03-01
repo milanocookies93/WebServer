@@ -1,6 +1,6 @@
 WebServer written in C that can deploy a static website from a git repository.
 
-Originally a CS 241 MP, but it is now modified to be memory efficient and work with github.
+Originally a CS 241 MP, but it is now modified to be memory efficient.
 
 You can run the server by compiling and executing the following:
 
