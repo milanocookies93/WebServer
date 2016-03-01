@@ -1,4 +1,4 @@
-WebServer written in C that can deploy a static website from github and update it.
+WebServer written in C that can deploy a static website from a git repository.
 
 Originally a CS 241 MP, but it is now modified to be memory efficient and work with github.
 
@@ -8,7 +8,7 @@ You can run the server by compiling and executing the following:
     ./server [URL to repository] &;disown;
 `
 
-If you set a webhook via the [Github API](https://developer.github.com/webhooks/), your site will update for each push.
+If you set a webhook via the [Github API](https://developer.github.com/webhooks/), your site will update for each push. Otherwise you can run the deploy.sh script.
 
 To Do
 * Allow customized POST requests
